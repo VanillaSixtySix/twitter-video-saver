@@ -1,23 +1,27 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.0.1
+// @version      1.0.2
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
-// @connect      fxtwitter.com
 // @connect      video.twimg.com
 // @connect      t.co
 // @icon         https://www.google.com/s2/favicons?domain=twitter.com
-// @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/userscript.js
-// @downloadURL  https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/userscript.js
+// @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
+// @downloadURL  https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @homepageURL  https://github.com/FlyingSixtySix/twitter-video-saver
+//
+// ***** ADD A @connect <your URL> IF UPDATING TWITFIX_URL *****
+// @connect      fxtwitter.com
+// @connect      twitfix.f66.dev
 // ==/UserScript==
 
 (async () => {
     // TwitFix host - be sure there's a trailing slash.
+    // ALSO BE SURE TO ADD A @connect LINE IN ==UserScript== ABOVE
     const TWITFIX_URL = 'https://twitfix.f66.dev/';
 
     /**
