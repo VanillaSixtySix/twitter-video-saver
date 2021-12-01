@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.0.0
+// @version      1.0.1
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -18,12 +18,16 @@
 
 (async () => {
     // TwitFix host - be sure there's a trailing slash.
-    const TWITFIX_URL = 'https://fxtwitter.com/';
+    const TWITFIX_URL = 'https://twitfix.f66.dev/';
 
     /**
      * Downloads data with the given file name and type.
      *
      * Credit: https://stackoverflow.com/a/30832210/6901668
+     *
+     * @param data The binary data.
+     * @param filename The output filename.
+     * @param type The MIME type.
      */
     function downloadFile(data, filename, type) {
         const file = new Blob([data], { type });
@@ -78,7 +82,7 @@
             video.parentNode.parentNode.parentNode.addEventListener('contextmenu', async event => {
                 // Wait for right click menu to be created in DOM.
                 await new Promise(res => setTimeout(res, 0));
-                const rightClickMenu = event.path[2].children[1];
+                const rightClickMenu = video.parentNode.parentNode.parentNode.lastChild.lastChild.lastChild;
 
                 // If we've already injected into the right click menu, nothing needs done.
                 // This is needed because you can right click multiple times on a video and keep the same element.
