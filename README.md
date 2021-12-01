@@ -2,7 +2,7 @@
 Adds a "Save Video" context menu option to Twitter videos.
 
 ## Installation
-[Click here](https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/userscript.js) and click "Install"!
+[Click here](https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js) and click "Install"!
 
 If needed, updates will be applied depending on your TamperMonkey/GreaseMonkey update frequency.
 
