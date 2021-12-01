@@ -1,6 +1,8 @@
 # twitter-video-saver-userscript
 Adds a "Save Video" context menu option to Twitter videos.
 
+<img src="https://files.f66.dev/uploads/NeJm8KpNfIfj1FJj.png">
+
 ## Installation
 [Click here](https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js) and click "Install"!
 
