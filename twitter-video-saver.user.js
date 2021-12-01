@@ -54,6 +54,10 @@
             method: 'GET',
             url: TWITFIX_URL + 'dir' + path,
             responseType: 'blob',
+            headers: {
+                referer: 'https://twitter.com',
+                origin: 'https://twitter.com'
+            },
             onload: function(info) {
                 if (info.readyState === 4 && info.status === 200) {
                     // info.response is the video binary
@@ -138,4 +142,4 @@
             video.setAttribute('data-twtdl-injected', 1);
         }
     }, 500);
-});
+})();
