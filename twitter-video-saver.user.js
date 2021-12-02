@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.2.1
+// @version      1.2.2
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -87,7 +87,7 @@
                     }
                     xhr.onprogress = info => {
                         let progress = Math.floor((info.loaded / info.total) * 100);
-                        if (progress < 0) progress = 100;
+                        if (progress < 0 || progress > 100) progress = 100;
                         progressElement.innerText = progress + '%';
                     };
                     xhr.onerror = err => {
