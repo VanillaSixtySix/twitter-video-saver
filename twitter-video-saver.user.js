@@ -1,65 +1,19 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.1.0
+// @version      1.2.0
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
 // @run-at       document-idle
-// @grant        GM_download
-// @connect      video.twimg.com
 // @connect      t.co
 // @icon         https://www.google.com/s2/favicons?domain=twitter.com
 // @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @downloadURL  https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @homepageURL  https://github.com/FlyingSixtySix/twitter-video-saver
-//
-// ***** ADD A @connect <your URL> IF UPDATING TWITFIX_URL *****
-// @connect      fxtwitter.com
-// @connect      twitfix.f66.dev
 // ==/UserScript==
 
 (async () => {
-    // TwitFix host - be sure there's a trailing slash.
-    // ALSO BE SURE TO ADD A @connect LINE IN ==UserScript== ABOVE
-    const TWITFIX_URL = 'https://twitfix.f66.dev/';
-
-    /**
-     * Downloads the video from the given Tweet path, i.e. /i/status/[~19 digit snowflake].
-     *
-     * @param path The path to the Tweet with the video.
-     * @param element The progress element.
-     */
-    function downloadVideo(path, element) {
-        // Because of CSP, we have to request using Tampermonkey.
-        GM_download({
-            url: TWITFIX_URL + 'dir' + path,
-            name: path.split('/').at(-1) + '.mp4',
-            headers: {
-                referer: 'https://twitter.com',
-                origin: 'https://twitter.com'
-            },
-            onerror: err => {
-                element.innerText = 'ERROR';
-                console.error('Failed to download video:', err.error || 'Unknown', err);
-                setTimeout(() => {
-                    element.remove();
-                }, 3000);
-            },
-            onload: info => {
-                console.info('Successfully downloaded video "' + path.split('/').at(-1) + '.mp4' + '"');
-                setTimeout(() => {
-                    element.remove();
-                }, 500);
-            },
-            onprogress: info => {
-                let progress = Math.floor((info.position / info.total) * 100);
-                if (progress < 0) progress = 100;
-                element.innerText = progress + '%';
-            }
-        });
-    }
-
     // It's simpler to use an interval instead of a MutationObserver in this case.
     setInterval(async () => {
         // Get all the videos on the page. I haven't run into instances of false-positives yet!
@@ -103,6 +57,10 @@
                 const playerState = react.sibling.memoizedProps.playerState;
                 // Get the status ID of the video source.
                 const id = playerState.source.id;
+                // Get the MP4 video source, if available.
+                let videoSource = playerState.tracks[0].variants.find(variant => variant.type === 'video/mp4');
+                // If the MP4 variant doesn't exist, get the first variant.
+                videoSource = videoSource || playerState.tracks[0].variants[0];
 
                 // Get the type of media.
                 const contentType = playerState.tracks[0].contentType;
@@ -122,6 +80,7 @@
                 }
                 // When the button is clicked, download the video.
                 newButton.onclick = async event => {
+                    // Create a progress label like the GIF label but in the top-left corner.
                     const progressElement = document.createElement('div');
                     progressElement.style.cssText = `
                         position: absolute;
@@ -140,8 +99,53 @@
                         line-height: 20px;
                     `;
                     progressElement.innerText = '0%';
-                    const elem = video.parentNode.parentNode.parentNode.lastChild.lastChild.appendChild(progressElement);
-                    downloadVideo('/i/status/' + id, elem);
+                    video.parentNode.parentNode.parentNode.lastChild.lastChild.appendChild(progressElement);
+
+                    // We'll have to make a request to get the video since creating a link with the direct URL just
+                    // makes the browser go to it, despite the download attribute. This also lets us use the progress
+                    // label. Yay!
+                    const xhr = new XMLHttpRequest();
+                    // Despite the response type being blob, we'll have to create a wrapper blob for it later with the
+                    // correct type (i.e. video/mp4).
+                    xhr.responseType = 'blob';
+                    xhr.open('GET', videoSource.src, true);
+                    // onreadystatechange is called before onload, which lets us save a tiny amount of time.
+                    xhr.onreadystatechange = () => {
+                        // If the request wasn't a success, consider it a failure. There's no in-between.
+                        if (xhr.readyState !== 4) return xhr.onerror(new Error('status code ' + xhr.status));
+                        // To download the file, we need to create an invisible link.
+                        const a = document.createElement('a');
+                        // Create a blob URL with the binary response from the video.
+                        const url = URL.createObjectURL(new Blob([xhr.response], { type: videoSource.type }));
+                        // Set the link's URL to be the new blob URL, like blob:twitter.com/[...].
+                        a.href = url;
+                        // Set the downloaded file name to tbe the ID.mp4.
+                        a.download = id + '.mp4';
+                        // Click the link to download it.
+                        a.click();
+                        // Deallocate the blob URL since we're done with it.
+                        URL.revokeObjectURL(url);
+                        // Remove the invisible link.
+                        a.remove();
+
+                        console.info(`Successfully downloaded video "${id}.mp4"`);
+                        setTimeout(() => {
+                            progressElement.remove();
+                        }, 500);
+                    }
+                    xhr.onprogress = info => {
+                        let progress = Math.floor((info.loaded / info.total) * 100);
+                        if (progress < 0) progress = 100;
+                        progressElement.innerText = progress + '%';
+                    };
+                    xhr.onerror = err => {
+                        progressElement.innerText = 'ERROR';
+                        console.error('Failed to download video:', err.error || 'Unknown', err);
+                        setTimeout(() => {
+                            progressElement.remove();
+                        }, 3000);
+                    };
+                    xhr.send();
                 };
                 // Update the tabindex of the "Copy Video Address" button for accessibility.
                 rightClickMenu.children[0].setAttribute('tabindex', rightClickMenu.length);
