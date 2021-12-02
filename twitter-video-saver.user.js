@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.0.2
+// @version      1.1.0
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
 // @run-at       document-idle
-// @grant        GM_xmlhttpRequest
+// @grant        GM_download
 // @connect      video.twimg.com
 // @connect      t.co
 // @icon         https://www.google.com/s2/favicons?domain=twitter.com
@@ -25,52 +25,37 @@
     const TWITFIX_URL = 'https://twitfix.f66.dev/';
 
     /**
-     * Downloads data with the given file name and type.
-     *
-     * Credit: https://stackoverflow.com/a/30832210/6901668
-     *
-     * @param data The binary data.
-     * @param filename The output filename.
-     * @param type The MIME type.
-     */
-    function downloadFile(data, filename, type) {
-        const file = new Blob([data], { type });
-        if (window.navigator.msSaveOrOpenBlob) {
-            window.navigator.msSaveOrOpenBlob(file, filename);
-        } else {
-            const a = document.createElement('a');
-            const url = URL.createObjectURL(file);
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 0);
-        }
-    }
-
-    /**
      * Downloads the video from the given Tweet path, i.e. /i/status/[~19 digit snowflake].
      *
      * @param path The path to the Tweet with the video.
+     * @param element The progress element.
      */
-    function downloadVideo(path) {
+    function downloadVideo(path, element) {
         // Because of CSP, we have to request using Tampermonkey.
-        GM_xmlhttpRequest({
-            method: 'GET',
+        GM_download({
             url: TWITFIX_URL + 'dir' + path,
-            responseType: 'blob',
+            name: path.split('/').at(-1) + '.mp4',
             headers: {
                 referer: 'https://twitter.com',
                 origin: 'https://twitter.com'
             },
-            onload: function(info) {
-                if (info.readyState === 4 && info.status === 200) {
-                    // info.response is the video binary
-                    downloadFile(info.response, path.split('/').at(-1), 'video/mp4');
-                }
+            onerror: err => {
+                element.innerText = 'ERROR';
+                console.error('Failed to download video:', err.error || 'Unknown', err);
+                setTimeout(() => {
+                    element.remove();
+                }, 3000);
+            },
+            onload: info => {
+                console.info('Successfully downloaded video "' + path.split('/').at(-1) + '.mp4' + '"');
+                setTimeout(() => {
+                    element.remove();
+                }, 500);
+            },
+            onprogress: info => {
+                let progress = Math.floor((info.position / info.total) * 100);
+                if (progress < 0) progress = 100;
+                element.innerText = progress + '%';
             }
         });
     }
@@ -83,7 +68,7 @@
             // If this video has already been injected, continue to the next video.
             if (video.getAttribute('data-twtdl-injected')) continue;
             // Add an event listener to the third parent for right clicks.
-            video.parentNode.parentNode.parentNode.addEventListener('contextmenu', async event => {
+            video.parentNode.parentNode.parentNode.addEventListener('contextmenu', async () => {
                 // Wait for right click menu to be created in DOM.
                 await new Promise(res => setTimeout(res, 0));
                 const rightClickMenu = video.parentNode.parentNode.parentNode.lastChild.lastChild.lastChild;
@@ -136,7 +121,28 @@
                         break;
                 }
                 // When the button is clicked, download the video.
-                newButton.onclick = () => downloadVideo('/i/status/' + id);
+                newButton.onclick = async event => {
+                    const progressElement = document.createElement('div');
+                    progressElement.style.cssText = `
+                        position: absolute;
+                        top: 12px;
+                        left: 12px;
+                        height: 20px;
+                        pointer-events: none !important;
+                        background: rgba(0, 0, 0, 0.77);
+                        color: rgb(255, 255, 255);
+                        line-height: 13px;
+                        font-size: 13px;
+                        font-weight: 700;
+                        font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        border-radius: 4px;
+                        padding: 0 4px 0 4px;
+                        line-height: 20px;
+                    `;
+                    progressElement.innerText = '0%';
+                    const elem = video.parentNode.parentNode.parentNode.lastChild.lastChild.appendChild(progressElement);
+                    downloadVideo('/i/status/' + id, elem);
+                };
                 // Update the tabindex of the "Copy Video Address" button for accessibility.
                 rightClickMenu.children[0].setAttribute('tabindex', rightClickMenu.length);
                 // Set the tabindex of the "Save Video" button to be the first.
