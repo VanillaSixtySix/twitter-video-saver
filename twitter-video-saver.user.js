@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.2.4
+// @version      1.2.5
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -47,7 +47,7 @@
                         break;
                 }
                 newButton.onclick = async event => {
-                    document.body.click();
+                    rightClickMenu.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.click();
                     const progressElement = document.createElement('div');
                     progressElement.style.cssText = `
                         position: absolute;
