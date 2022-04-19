@@ -47,7 +47,7 @@
                         break;
                 }
                 newButton.onclick = async event => {
-                    rightClickMenu.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.click();
+                    document.body.click();
                     const progressElement = document.createElement('div');
                     progressElement.style.cssText = `
                         position: absolute;
