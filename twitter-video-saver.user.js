@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.2.6
+// @version      1.3.0
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -13,6 +13,7 @@
 // ==/UserScript==
 
 (async () => {
+    const isFirefox = navigator.userAgent.indexOf("Firefox") !== -1;
     setInterval(async () => {
         const videos = document.querySelectorAll('video');
         for (const video of videos) {
@@ -26,24 +27,53 @@
                 const newButton = rightClickMenu.children[0].cloneNode(true);
 
                 const reactElem = video.parentNode.parentNode;
-                const propertyNames = Object.getOwnPropertyNames(reactElem);
-                const internalPropName = propertyNames.find(name => name.startsWith('__reactFiber'));
-                const react = reactElem[internalPropName];
+                let react;
+                if (isFirefox) {
+                    // For some reason, Firefox 122 doesn't let us access object properties of a DOM element
+                    //  It just returns an empty array ????
+                    unsafeWindow.reactElem = reactElem;
+                    await new Promise(res => {
+                        const scriptElement = document.createElement('script');
+                        scriptElement.src = `data:text/javascript,window.react = window.reactElem[Object.getOwnPropertyNames(window.reactElem).find(n => n.startsWith('__reactFiber'))]`;
+                        document.body.appendChild(scriptElement);
+                        setTimeout(res);
+                    });
+                    react = unsafeWindow.react;
+                } else {
+                    const propertyNames = Object.getOwnPropertyNames(reactElem);
+                    const internalPropName = propertyNames.find(name => name.startsWith('__reactFiber'));
+                    react = reactElem[internalPropName];
+                }
+
                 const playerState = react.sibling.memoizedProps.playerState;
                 const id = playerState.source.id;
-                let videoSource = playerState.tracks[0].variants.find(variant => variant.type === 'video/mp4');
+
+                let videoSource;
+                if (isFirefox) {
+                    // For some reason, Firefox doesn't let us iterate over playerState.tracks[0].variants with a .find()
+                    //  IT LITERALLY ERRORS OUT WITH "Permission denied to access object" ????
+                    for (const variant of playerState.tracks[0].variants) {
+                        if (variant.type === 'video/mp4') {
+                            videoSource = variant;
+                            break;
+                        }
+                    }
+                } else {
+                    videoSource = playerState.tracks[0].variants.find(variant => variant.type === 'video/mp4');
+                }
+
                 videoSource = videoSource || playerState.tracks[0].variants[0];
 
                 const contentType = playerState.tracks[0].contentType;
                 switch (contentType) {
                     case 'gif':
-                        newButton.children[0].children[0].children[0].innerText = 'Save Gif (Video)';
+                        newButton.children[0].children[0].innerText = 'Save Gif (Video)';
                         break;
                     case 'media_entity':
-                        newButton.children[0].children[0].children[0].innerText = 'Save Video';
+                        newButton.children[0].children[0].innerText = 'Save Video';
                         break;
                     default:
-                        newButton.children[0].children[0].children[0].innerText = 'Save Other (Video)';
+                        newButton.children[0].children[0].innerText = 'Save Other (Video)';
                         break;
                 }
                 newButton.onclick = async event => {
