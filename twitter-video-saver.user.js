@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.3.0
+// @version      1.4.0
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -48,19 +48,13 @@
                 const playerState = react.sibling.memoizedProps.playerState;
                 const id = playerState.source.id;
 
-                let videoSource;
-                if (isFirefox) {
-                    // For some reason, Firefox doesn't let us iterate over playerState.tracks[0].variants with a .find()
-                    //  IT LITERALLY ERRORS OUT WITH "Permission denied to access object" ????
-                    for (const variant of playerState.tracks[0].variants) {
-                        if (variant.type === 'video/mp4') {
-                            videoSource = variant;
-                            break;
-                        }
-                    }
-                } else {
-                    videoSource = playerState.tracks[0].variants.find(variant => variant.type === 'video/mp4');
-                }
+                const playerState = react.sibling.memoizedProps.playerState;
+                const id = playerState.source.id;
+
+                const variants = [...playerState.tracks[0].variants];
+                let videoSource = variants
+                .filter(variant => variant.type === 'video/mp4' && variant.bitrate)
+                .reduce((acc, variant) => (acc.bitrate > variant.bitrate ? acc : variant), { bitrate: 0 });
 
                 videoSource = videoSource || playerState.tracks[0].variants[0];
 
