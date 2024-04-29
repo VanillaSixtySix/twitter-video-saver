@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.4.0
+// @version      1.4.1
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -44,9 +44,6 @@
                     const internalPropName = propertyNames.find(name => name.startsWith('__reactFiber'));
                     react = reactElem[internalPropName];
                 }
-
-                const playerState = react.sibling.memoizedProps.playerState;
-                const id = playerState.source.id;
 
                 const playerState = react.sibling.memoizedProps.playerState;
                 const id = playerState.source.id;
