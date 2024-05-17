@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.4.1
+// @version      1.4.2
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
+// @match        https://x.com/*
 // @run-at       document-idle
 // @icon         https://www.google.com/s2/favicons?domain=twitter.com
 // @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
