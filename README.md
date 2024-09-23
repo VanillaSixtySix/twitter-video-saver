@@ -1,8 +1,6 @@
 # twitter-video-saver
 Adds a "Save Video" context menu option to Twitter videos.
 
-<img src="https://files.f66.dev/uploads/NeJm8KpNfIfj1FJj.png">
-
 ## Installation
 
 1. Install [TamperMonkey](https://www.tampermonkey.net/)
@@ -13,4 +11,4 @@ Adds a "Save Video" context menu option to Twitter videos.
 - This script is susceptible to breakage if Twitter changes the video element or state structures.
 - By default, videos are named after their status ID.
 This means you can use the ID in `1465898895230263297.mp4` to get to the original status, like so: https://twitter.com/i/status/1465898895230263297
-- As a side-effect of GIFs being served as MP4s, they will be saved as `.mp4`.
+- GIFs will be converted by a hosted [mediaconf](https://github.com/VanillaSixtySix/mediaconv) instance.
