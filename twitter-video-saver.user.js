@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.4.2
+// @version      1.5.0
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       Vanilla Black
 // @match        https://twitter.com/*
@@ -11,6 +11,8 @@
 // @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @downloadURL  https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @homepageURL  https://github.com/FlyingSixtySix/twitter-video-saver
+// @grant        GM_xmlhttpRequest
+// @connect      api.f66.dev
 // ==/UserScript==
 
 (async () => {
@@ -51,15 +53,29 @@
 
                 const variants = [...playerState.tracks[0].variants];
                 let videoSource = variants
-                .filter(variant => variant.type === 'video/mp4' && variant.bitrate)
+                .filter(variant => variant.type === 'video/mp4' && variant.src)
                 .reduce((acc, variant) => (acc.bitrate > variant.bitrate ? acc : variant), { bitrate: 0 });
 
                 videoSource = videoSource || playerState.tracks[0].variants[0];
+                console.debug(videoSource, variants);
 
                 const contentType = playerState.tracks[0].contentType;
                 switch (contentType) {
                     case 'gif':
-                        newButton.children[0].children[0].innerText = 'Save Gif (Video)';
+                        newButton.children[0].children[0].innerText = 'Save Gif (Convert)';
+                        rightClickMenu.style = `
+                            display: flex;
+                            flex-direction: column;
+                            padding: 0;
+                        `;
+                        [...rightClickMenu.children].forEach(child => {
+                            child.style = `
+                                padding: 12px 16px;
+                            `;
+                        });
+                        newButton.style = `
+                            padding: 12px 16px;
+                        `;
                         break;
                     case 'media_entity':
                         newButton.children[0].children[0].innerText = 'Save Video';
@@ -71,7 +87,7 @@
                 newButton.onclick = async event => {
                     document.body.click();
                     const progressElement = document.createElement('div');
-                    progressElement.style.cssText = `
+                    progressElement.style = `
                         position: absolute;
                         top: 12px;
                         left: 12px;
@@ -88,14 +104,52 @@
                         line-height: 20px;
                     `;
                     progressElement.innerText = '0%';
-                    video.parentNode.parentNode.parentNode.lastChild.lastChild.appendChild(progressElement);
+                    video.parentNode.parentNode.nextSibling.firstChild.children[1].appendChild(progressElement);
 
+                    const a = document.createElement('a');
+
+                    if (contentType === 'gif') {
+                        let res;
+                        try {
+                            res = await GM.xmlHttpRequest({
+                                url: 'https://api.f66.dev/mediaconv',
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                responseType: 'blob',
+                                data: JSON.stringify({
+                                    url: videoSource.src,
+                                    to: 'gif'
+                                })
+                            });
+                        } catch (err) {
+                            progressElement.innerText = 'ERROR';
+                            console.error('Failed to download video:', err.error || 'Unknown', err);
+                            setTimeout(() => {
+                                progressElement.remove();
+                            }, 3000);
+                            return;
+                        }
+                        const blob = res.response;
+                        const url = URL.createObjectURL(blob, { type: 'image/gif' });
+                        a.href = url;
+                        a.download = id + '.gif';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        a.remove();
+
+                        console.info(`Successfully downloaded video "${id}.gif"`);
+                        setTimeout(() => {
+                            progressElement.remove();
+                        }, 500);
+                        return;
+                    }
                     const xhr = new XMLHttpRequest();
                     xhr.responseType = 'blob';
                     xhr.open('GET', videoSource.src, true);
                     xhr.onreadystatechange = () => {
                         if (xhr.readyState !== 4) return xhr.onerror(new Error('status code ' + xhr.status));
-                        const a = document.createElement('a');
                         const url = URL.createObjectURL(new Blob([xhr.response], { type: videoSource.type }));
                         a.href = url;
                         a.download = id + '.mp4';
