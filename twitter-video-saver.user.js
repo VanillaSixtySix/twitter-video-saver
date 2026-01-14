@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.5.0
+// @version      1.5.1
 // @description  Adds a "Save Video" context menu option to Twitter videos.
-// @author       Vanilla Black
+// @author       VanillaSixtySix
 // @match        https://twitter.com/*
 // @match        https://x.com/*
 // @run-at       document-idle
@@ -11,12 +11,12 @@
 // @updateURL    https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @downloadURL  https://raw.githubusercontent.com/FlyingSixtySix/twitter-video-saver/main/twitter-video-saver.user.js
 // @homepageURL  https://github.com/FlyingSixtySix/twitter-video-saver
-// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
 // @connect      api.f66.dev
 // ==/UserScript==
 
 (async () => {
-    const isFirefox = navigator.userAgent.indexOf("Firefox") !== -1;
+    const isFirefox = navigator.userAgent.includes("Firefox");
     setInterval(async () => {
         const videos = document.querySelectorAll('video');
         for (const video of videos) {
@@ -95,7 +95,6 @@
                         pointer-events: none !important;
                         background: rgba(0, 0, 0, 0.77);
                         color: rgb(255, 255, 255);
-                        line-height: 13px;
                         font-size: 13px;
                         font-weight: 700;
                         font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -132,12 +131,11 @@
                             return;
                         }
                         const blob = res.response;
-                        const url = URL.createObjectURL(blob, { type: 'image/gif' });
+                        const url = URL.createObjectURL(blob);
                         a.href = url;
                         a.download = id + '.gif';
                         a.click();
                         URL.revokeObjectURL(url);
-                        a.remove();
 
                         console.info(`Successfully downloaded video "${id}.gif"`);
                         setTimeout(() => {
@@ -148,14 +146,16 @@
                     const xhr = new XMLHttpRequest();
                     xhr.responseType = 'blob';
                     xhr.open('GET', videoSource.src, true);
-                    xhr.onreadystatechange = () => {
-                        if (xhr.readyState !== 4) return xhr.onerror(new Error('status code ' + xhr.status));
+                    xhr.onload = () => {
+                        if (xhr.status !== 200) {
+                            xhr.onerror(new Error('status code ' + xhr.status));
+                            return;
+                        }
                         const url = URL.createObjectURL(new Blob([xhr.response], { type: videoSource.type }));
                         a.href = url;
                         a.download = id + '.mp4';
                         a.click();
                         URL.revokeObjectURL(url);
-                        a.remove();
 
                         console.info(`Successfully downloaded video "${id}.mp4"`);
                         setTimeout(() => {
@@ -176,7 +176,7 @@
                     };
                     xhr.send();
                 };
-                rightClickMenu.children[0].setAttribute('tabindex', rightClickMenu.length);
+                rightClickMenu.children[0].setAttribute('tabindex', rightClickMenu.children.length);
                 newButton.setAttribute('tabindex', 0);
                 rightClickMenu.insertBefore(newButton, rightClickMenu.firstChild);
                 rightClickMenu.setAttribute('data-twtdl-injected', 1);
