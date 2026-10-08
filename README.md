@@ -12,3 +12,9 @@ Adds a "Save Video" context menu option to Twitter videos.
 - By default, videos are named after their status ID.
 This means you can use the ID in `1465898895230263297.mp4` to get to the original status, like so: https://twitter.com/i/status/1465898895230263297
 - GIFs will be converted by a hosted [mediaconf](https://github.com/VanillaSixtySix/mediaconv) instance.
+
+## Menu regression check
+
+Run `python3 -m http.server --bind 127.0.0.1` from this directory, then open
+[the browser check](http://127.0.0.1:8000/test/menu.html). It checks both save
+actions against a menu rendered outside the video player, with downloads mocked.

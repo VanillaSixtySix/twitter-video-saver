@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Video Saver
 // @namespace    https://f66.dev
-// @version      1.5.1
+// @version      1.5.2
 // @description  Adds a "Save Video" context menu option to Twitter videos.
 // @author       VanillaSixtySix
 // @match        https://twitter.com/*
@@ -17,169 +17,175 @@
 
 (async () => {
     const isFirefox = navigator.userAgent.includes("Firefox");
-    setInterval(async () => {
-        const videos = document.querySelectorAll('video');
-        for (const video of videos) {
+
+    const BUTTON_LABELS = {
+        gif: 'Save Gif (Convert)',
+        media_entity: 'Save Video',
+    };
+
+    const PROGRESS_STYLE = `
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        height: 20px;
+        pointer-events: none !important;
+        background: rgba(0, 0, 0, 0.77);
+        color: rgb(255, 255, 255);
+        font-size: 13px;
+        font-weight: 700;
+        font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        border-radius: 4px;
+        padding: 0 4px 0 4px;
+        line-height: 20px;
+    `;
+
+    async function getReactFiber(reactElem) {
+        if (!isFirefox) {
+            const propName = Object.getOwnPropertyNames(reactElem).find(n => n.startsWith('__reactFiber'));
+            return reactElem[propName];
+        }
+        // Firefox 122 doesn't expose object properties of a DOM element to userscripts
+        unsafeWindow.reactElem = reactElem;
+        await new Promise(res => {
+            const s = document.createElement('script');
+            s.src = `data:text/javascript,window.react = window.reactElem[Object.getOwnPropertyNames(window.reactElem).find(n => n.startsWith('__reactFiber'))]`;
+            document.body.appendChild(s);
+            setTimeout(res);
+        });
+        return unsafeWindow.react;
+    }
+
+    function pickVideoSource(variants) {
+        const best = variants
+            .filter(v => v.type === 'video/mp4' && v.src)
+            .reduce((acc, v) => (acc.bitrate > v.bitrate ? acc : v), { bitrate: 0 });
+        return best.src ? best : variants[0];
+    }
+
+    function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function fetchGif(src) {
+        return new Promise((resolve, reject) => {
+            const started = Date.now();
+            const elapsed = () => ((Date.now() - started) / 1000).toFixed(2) + 's';
+            console.info('[twtdl] fetchGif start', { src });
+            GM.xmlHttpRequest({
+                url: 'https://api.f66.dev/mediaconv/',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                responseType: 'blob',
+                data: JSON.stringify({ url: src, to: 'gif' }),
+                timeout: 300000,
+                onloadstart: e => console.info('[twtdl] fetchGif onloadstart', elapsed(), e),
+                onprogress: e => console.info('[twtdl] fetchGif onprogress', elapsed(), { loaded: e.loaded, total: e.total }),
+                onreadystatechange: e => console.info('[twtdl] fetchGif onreadystatechange', elapsed(), { readyState: e.readyState, status: e.status, statusText: e.statusText }),
+                onload: res => {
+                    console.info('[twtdl] fetchGif onload', elapsed(), { status: res.status, statusText: res.statusText, responseHeaders: res.responseHeaders, finalUrl: res.finalUrl, blobSize: res.response && res.response.size });
+                    res.status === 200 ? resolve(res.response) : reject(new Error('status ' + res.status));
+                },
+                onerror: err => {
+                    console.error('[twtdl] fetchGif onerror', elapsed(), { status: err.status, statusText: err.statusText, responseHeaders: err.responseHeaders, finalUrl: err.finalUrl, error: err.error });
+                    reject(err);
+                },
+                ontimeout: e => {
+                    console.error('[twtdl] fetchGif ontimeout', elapsed(), e);
+                    reject(new Error('timeout'));
+                },
+                onabort: e => {
+                    console.error('[twtdl] fetchGif onabort', elapsed(), e);
+                    reject(new Error('abort'));
+                },
+            });
+        });
+    }
+
+    function fetchVideo(src, type, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.responseType = 'blob';
+            xhr.open('GET', src, true);
+            xhr.onload = () => xhr.status === 200
+                ? resolve(new Blob([xhr.response], { type }))
+                : reject(new Error('status ' + xhr.status));
+            xhr.onerror = reject;
+            xhr.onprogress = info => {
+                const pct = Math.min(100, Math.max(0, Math.floor((info.loaded / info.total) * 100)));
+                onProgress(pct);
+            };
+            xhr.send();
+        });
+    }
+
+    async function handleDownload(video, contentType, videoSource, id) {
+        const progress = document.createElement('div');
+        progress.style = PROGRESS_STYLE;
+        progress.innerText = '0%';
+        video.parentNode.parentNode.nextSibling.firstChild.children[1].appendChild(progress);
+
+        try {
+            const isGif = contentType === 'gif';
+            console.info('[twtdl] handleDownload start', { id, contentType, isGif, videoSource });
+            if (isGif) progress.innerText = 'converting…';
+            const blob = isGif
+                ? await fetchGif(videoSource.src)
+                : await fetchVideo(videoSource.src, videoSource.type, pct => progress.innerText = pct + '%');
+            console.info('[twtdl] handleDownload got blob', { size: blob && blob.size, type: blob && blob.type });
+            const filename = `${id}.${isGif ? 'gif' : 'mp4'}`;
+            triggerDownload(blob, filename);
+            console.info(`Successfully downloaded "${filename}"`);
+            setTimeout(() => progress.remove(), 500);
+        } catch (err) {
+            progress.innerText = 'ERROR';
+            console.error('Failed to download:', err);
+            setTimeout(() => progress.remove(), 3000);
+        }
+    }
+
+    async function injectMenu(video) {
+        // X renders the context menu outside the video player.
+        const menuItem = document.querySelector('[role="menu"] [role="menuitem"]');
+        const menu = menuItem?.parentElement;
+        if (!menu || menu.hasAttribute('data-twtdl-injected')) return;
+
+        const button = menuItem.cloneNode(true);
+        const react = await getReactFiber(video.parentNode.parentNode);
+        if (!menu.isConnected || menu.hasAttribute('data-twtdl-injected')) return;
+        const playerState = react.sibling.memoizedProps.playerState;
+        const id = playerState.source.id;
+        const contentType = playerState.tracks[0].contentType;
+        const videoSource = pickVideoSource([...playerState.tracks[0].variants]);
+
+        button.querySelector('span').textContent = BUTTON_LABELS[contentType] || 'Save Other (Video)';
+
+        button.onclick = () => {
+            document.body.click();
+            handleDownload(video, contentType, videoSource, id);
+        };
+        button.onkeydown = event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                button.click();
+            }
+        };
+
+        button.setAttribute('tabindex', 0);
+        menu.insertBefore(button, menu.firstChild);
+        menu.setAttribute('data-twtdl-injected', 1);
+    }
+
+    setInterval(() => {
+        for (const video of document.querySelectorAll('video')) {
             if (video.getAttribute('data-twtdl-injected')) continue;
             video.parentNode.parentNode.parentNode.addEventListener('contextmenu', async () => {
                 await new Promise(res => setTimeout(res, 0));
-                const rightClickMenu = video.parentNode.parentNode.parentNode.lastChild.lastChild.lastChild;
-
-                if (rightClickMenu.getAttribute('data-twtdl-injected') != null) return;
-
-                const newButton = rightClickMenu.children[0].cloneNode(true);
-
-                const reactElem = video.parentNode.parentNode;
-                let react;
-                if (isFirefox) {
-                    // For some reason, Firefox 122 doesn't let us access object properties of a DOM element
-                    //  It just returns an empty array ????
-                    unsafeWindow.reactElem = reactElem;
-                    await new Promise(res => {
-                        const scriptElement = document.createElement('script');
-                        scriptElement.src = `data:text/javascript,window.react = window.reactElem[Object.getOwnPropertyNames(window.reactElem).find(n => n.startsWith('__reactFiber'))]`;
-                        document.body.appendChild(scriptElement);
-                        setTimeout(res);
-                    });
-                    react = unsafeWindow.react;
-                } else {
-                    const propertyNames = Object.getOwnPropertyNames(reactElem);
-                    const internalPropName = propertyNames.find(name => name.startsWith('__reactFiber'));
-                    react = reactElem[internalPropName];
-                }
-
-                const playerState = react.sibling.memoizedProps.playerState;
-                const id = playerState.source.id;
-
-                const variants = [...playerState.tracks[0].variants];
-                let videoSource = variants
-                .filter(variant => variant.type === 'video/mp4' && variant.src)
-                .reduce((acc, variant) => (acc.bitrate > variant.bitrate ? acc : variant), { bitrate: 0 });
-
-                videoSource = videoSource || playerState.tracks[0].variants[0];
-                console.debug(videoSource, variants);
-
-                const contentType = playerState.tracks[0].contentType;
-                switch (contentType) {
-                    case 'gif':
-                        newButton.children[0].children[0].innerText = 'Save Gif (Convert)';
-                        rightClickMenu.style = `
-                            display: flex;
-                            flex-direction: column;
-                            padding: 0;
-                        `;
-                        [...rightClickMenu.children].forEach(child => {
-                            child.style = `
-                                padding: 12px 16px;
-                            `;
-                        });
-                        newButton.style = `
-                            padding: 12px 16px;
-                        `;
-                        break;
-                    case 'media_entity':
-                        newButton.children[0].children[0].innerText = 'Save Video';
-                        break;
-                    default:
-                        newButton.children[0].children[0].innerText = 'Save Other (Video)';
-                        break;
-                }
-                newButton.onclick = async event => {
-                    document.body.click();
-                    const progressElement = document.createElement('div');
-                    progressElement.style = `
-                        position: absolute;
-                        top: 12px;
-                        left: 12px;
-                        height: 20px;
-                        pointer-events: none !important;
-                        background: rgba(0, 0, 0, 0.77);
-                        color: rgb(255, 255, 255);
-                        font-size: 13px;
-                        font-weight: 700;
-                        font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                        border-radius: 4px;
-                        padding: 0 4px 0 4px;
-                        line-height: 20px;
-                    `;
-                    progressElement.innerText = '0%';
-                    video.parentNode.parentNode.nextSibling.firstChild.children[1].appendChild(progressElement);
-
-                    const a = document.createElement('a');
-
-                    if (contentType === 'gif') {
-                        let res;
-                        try {
-                            res = await GM.xmlHttpRequest({
-                                url: 'https://api.f66.dev/mediaconv',
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                responseType: 'blob',
-                                data: JSON.stringify({
-                                    url: videoSource.src,
-                                    to: 'gif'
-                                })
-                            });
-                        } catch (err) {
-                            progressElement.innerText = 'ERROR';
-                            console.error('Failed to download video:', err.error || 'Unknown', err);
-                            setTimeout(() => {
-                                progressElement.remove();
-                            }, 3000);
-                            return;
-                        }
-                        const blob = res.response;
-                        const url = URL.createObjectURL(blob);
-                        a.href = url;
-                        a.download = id + '.gif';
-                        a.click();
-                        URL.revokeObjectURL(url);
-
-                        console.info(`Successfully downloaded video "${id}.gif"`);
-                        setTimeout(() => {
-                            progressElement.remove();
-                        }, 500);
-                        return;
-                    }
-                    const xhr = new XMLHttpRequest();
-                    xhr.responseType = 'blob';
-                    xhr.open('GET', videoSource.src, true);
-                    xhr.onload = () => {
-                        if (xhr.status !== 200) {
-                            xhr.onerror(new Error('status code ' + xhr.status));
-                            return;
-                        }
-                        const url = URL.createObjectURL(new Blob([xhr.response], { type: videoSource.type }));
-                        a.href = url;
-                        a.download = id + '.mp4';
-                        a.click();
-                        URL.revokeObjectURL(url);
-
-                        console.info(`Successfully downloaded video "${id}.mp4"`);
-                        setTimeout(() => {
-                            progressElement.remove();
-                        }, 500);
-                    }
-                    xhr.onprogress = info => {
-                        let progress = Math.floor((info.loaded / info.total) * 100);
-                        if (progress < 0 || progress > 100) progress = 100;
-                        progressElement.innerText = progress + '%';
-                    };
-                    xhr.onerror = err => {
-                        progressElement.innerText = 'ERROR';
-                        console.error('Failed to download video:', err.error || 'Unknown', err);
-                        setTimeout(() => {
-                            progressElement.remove();
-                        }, 3000);
-                    };
-                    xhr.send();
-                };
-                rightClickMenu.children[0].setAttribute('tabindex', rightClickMenu.children.length);
-                newButton.setAttribute('tabindex', 0);
-                rightClickMenu.insertBefore(newButton, rightClickMenu.firstChild);
-                rightClickMenu.setAttribute('data-twtdl-injected', 1);
+                injectMenu(video).catch(err => console.error('Failed to add save menu:', err));
             });
             video.setAttribute('data-twtdl-injected', 1);
         }

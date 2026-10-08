@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Video save menu regression check</title>
+<output id="result">Running…</output>
+<div id="player"><div><div><video></video></div></div><div><div><div></div><div></div></div></div></div>
+<script>
+    const player = document.getElementById('player');
+    const result = document.getElementById('result');
+    const video = document.querySelector('video');
+    const playerState = { source: { id: 'test-video' }, tracks: [{
+        contentType: 'media_entity',
+        variants: [
+            { type: 'application/x-mpegURL', src: 'stream.m3u8' },
+            { type: 'video/mp4', src: 'low.mp4', bitrate: 1 },
+            { type: 'video/mp4', src: 'high.mp4', bitrate: 2 },
+        ],
+    }] };
+    video.parentNode.parentNode.__reactFiberTest = { sibling: { memoizedProps: { playerState } } };
+    const fetched = [], converted = [], saved = [];
+    window.XMLHttpRequest = class {
+        open(method, src) { this.src = src; }
+        send() {
+            fetched.push(this.src);
+            this.status = 200;
+            this.response = new Blob(['video']);
+            this.onload();
+        }
+    };
+    window.GM = { xmlHttpRequest(options) {
+        converted.push(JSON.parse(options.data));
+        options.onload({ status: 200, response: new Blob(['gif']) });
+    } };
+    HTMLAnchorElement.prototype.click = function () { saved.push(this.download); };
+    let menu, createMenu = true;
+    player.addEventListener('contextmenu', () => {
+        if (!createMenu) return;
+        menu?.remove();
+        menu = document.createElement('div');
+        menu.setAttribute('role', 'menu');
+        menu.innerHTML = '<div><div><div data-testid="Dropdown"><div role="menuitem" tabindex="0"><div><div><span>Copy address</span></div></div></div></div></div></div>';
+        document.body.appendChild(menu);
+    });
+    document.body.addEventListener('click', event => {
+        if (event.target === document.body) menu?.remove();
+    });
+</script>
+<script src="../twitter-video-saver.user.js"></script>
+<script type="module">
+    const assert = (condition, message) => { if (!condition) throw new Error(message); };
+    const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+    const rightClick = async () => {
+        player.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        await tick();
+    };
+    try {
+        await new Promise(resolve => setTimeout(resolve, 600));
+        for (const [contentType, label, key] of [
+            ['media_entity', 'Save Video', 'Enter'],
+            ['gif', 'Save Gif (Convert)', ' '],
+        ]) {
+            playerState.tracks[0].contentType = contentType;
+            await rightClick();
+            const button = menu.querySelector('[role="menuitem"]');
+            assert(button.textContent === label, `${contentType}: save item missing from portal`);
+            assert(button.nextElementSibling.textContent === 'Copy address', 'native item changed');
+            assert(!button.parentElement.style.cssText, 'native menu layout changed');
+            assert(button.tabIndex === 0 && button.nextElementSibling.tabIndex === 0, 'keyboard focus changed');
+            createMenu = false;
+            await Promise.all([rightClick(), rightClick()]);
+            assert(menu.querySelectorAll('[role="menuitem"]').length === 2, 'duplicate save item');
+            createMenu = true;
+            button.click();
+            await tick();
+            await rightClick();
+            menu.querySelector('[role="menuitem"]').dispatchEvent(new KeyboardEvent('keydown', {
+                key, bubbles: true, cancelable: true,
+            }));
+            await tick();
+        }
+        assert(fetched.join() === 'high.mp4,high.mp4', 'wrong MP4 variant');
+        assert(converted.length === 2 && converted.every(c => c.url === 'high.mp4' && c.to === 'gif'), 'wrong GIF conversion');
+        assert(saved.join() === 'test-video.mp4,test-video.mp4,test-video.gif,test-video.gif', 'wrong filenames');
+        createMenu = false;
+        await rightClick();
+        assert(!document.querySelector('[role="menu"]'), 'menu should remain absent');
+        result.textContent = 'PASS: portal menus, GIF/video labels, reopen, duplicates, mouse/keyboard downloads, filenames, and missing menus.';
+    } catch (error) {
+        result.textContent = 'FAIL: ' + error.message;
+        console.error(error);
+    }
+</script>
